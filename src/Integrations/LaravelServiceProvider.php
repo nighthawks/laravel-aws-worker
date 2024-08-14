@@ -10,13 +10,12 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\QueueManager;
-use Illuminate\Queue\QueueServiceProvider;
 
 /**
  * Class CustomQueueServiceProvider
  * @package App\Providers
  */
-class LaravelServiceProvider extends QueueServiceProvider
+class LaravelServiceProvider extends ServiceProvider
 {
     use BindsWorker;
 
@@ -27,10 +26,8 @@ class LaravelServiceProvider extends QueueServiceProvider
     {
         if (function_exists('env') && ! env('REGISTER_WORKER_ROUTES', true)) return;
 
-        $this->bindWorker();
+        // $this->bindWorker();
         $this->addRoutes();
-
-        parent::register();
     }
 
     /**
@@ -42,9 +39,9 @@ class LaravelServiceProvider extends QueueServiceProvider
         $this->app['router']->post('/worker/queue', 'Dusterio\AwsWorker\Controllers\WorkerController@queue');
     }
 
-    // /**
-    //  * @return void
-    //  */
+    /**
+     * @return void
+     */
     // public function boot()
     // {
     //     $this->app->singleton(QueueManager::class, function () {

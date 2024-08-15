@@ -12,6 +12,7 @@ use Illuminate\Queue\Worker;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 class WorkerController extends LaravelController
 {
@@ -19,7 +20,9 @@ class WorkerController extends LaravelController
      * @var array
      */
     protected $awsHeaders = [
-        'X-Aws-Sqsd-Queue', 'X-Aws-Sqsd-Msgid', 'X-Aws-Sqsd-Receive-Count'
+        'X-Aws-Sqsd-Queue',
+        'X-Aws-Sqsd-Msgid',
+        'X-Aws-Sqsd-Receive-Count'
     ];
 
     /**
@@ -43,7 +46,7 @@ class WorkerController extends LaravelController
         if ($command != $this::LARAVEL_SCHEDULE_COMMAND) return $this->runSpecificCommand($kernel, $request->headers->get('X-Aws-Sqsd-Taskname'));
 
         $kernel->bootstrap();
-        
+
         $events = $schedule->dueEvents($laravel);
         $eventsRan = 0;
         $messages = [];
@@ -53,7 +56,7 @@ class WorkerController extends LaravelController
                 continue;
             }
 
-            $messages[] = 'Running: '.$event->getSummaryForDisplay();
+            $messages[] = 'Running: ' . $event->getSummaryForDisplay();
 
             $event->run($laravel);
 
@@ -80,7 +83,7 @@ class WorkerController extends LaravelController
         array_shift($elements);
         $arguments = [];
 
-        array_map(function($parameter) use (&$arguments) {
+        array_map(function ($parameter) use (&$arguments) {
             if (strstr($parameter, '=')) {
                 $parts = explode('=', $parameter);
                 $arguments[$parts[0]] = $parts[1];
@@ -103,7 +106,7 @@ class WorkerController extends LaravelController
      */
     protected function runSpecificCommand(Kernel $kernel, $command)
     {
-        list ($name, $arguments) = $this->parseCommand($command);
+        list($name, $arguments) = $this->parseCommand($command);
 
         $exitCode = $kernel->call($name, $arguments);
 
@@ -122,6 +125,18 @@ class WorkerController extends LaravelController
         //$this->validateHeaders($request);
         $body = $this->validateBody($request, $laravel);
 
+        Log::info("Queue worker received a job", [
+            'body' => [
+                'Body' => $body,
+                'MessageId' => $request->header('X-Aws-Sqsd-Msgid'),
+                'ReceiptHandle' => false,
+                'Attributes' => [
+                    'ApproximateReceiveCount' => $request->header('X-Aws-Sqsd-Receive-Count'),
+                    'SentTimestamp' => $request->headers->has('X-Aws-Sqsd-First-Received-At') ? strtotime($request->header('X-Aws-Sqsd-First-Received-At')) * 1000 : null
+                ]
+            ]
+        ]);
+
         $job = new AwsJob($laravel, $request->header('X-Aws-Sqsd-Queue'), [
             'Body' => $body,
             'MessageId' => $request->header('X-Aws-Sqsd-Msgid'),
@@ -132,11 +147,17 @@ class WorkerController extends LaravelController
             ]
         ]);
 
-        $worker->process(
-            $request->header('X-Aws-Sqsd-Queue'), $job, array_merge([
+        $result = $worker->process(
+            $request->header('X-Aws-Sqsd-Queue'),
+            $job,
+            array_merge([
                 'delay' => 0
             ],  $this->tryToExtractOptions($body))
         );
+
+        Log::info("Queue worker job process result: ", [
+            'result' => $result
+        ]);
 
         return $this->response([
             'Processed ' . $job->getJobId()
@@ -223,7 +244,7 @@ class WorkerController extends LaravelController
             'data' => $request->getContent()
         ]);
     }
-    
+
     /**
      * @param array $messages
      * @param int $code
